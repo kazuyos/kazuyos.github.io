@@ -2,82 +2,121 @@
 <html lang="ja">
 
 <head>
-  <meta charset="utf-8">
-  <title>tableフィルタ</title>
-  <style>
-  </style>
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/0.11.10/vue.min.js"></script>
+   <meta charset="utf-8">
+   <title>csvファイル検索ツール</title>
+   <style>
+      h1 {
+         font-size: 16px;
+         display: inline;
+      }
+
+      p {
+         display: inline;
+      }
+
+      input[type=number] {
+         width: 80px;
+      }
+   </style>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.0.7/vue.min.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/1.0.30/encoding.min.js"></script>
 </head>
 
 <body>
-  <div class="container">
-    <div id="vue-table">
-      <input type="text" v-model="search" class="form-control" />
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th v-repeat="column: columns">
-              <a href="#" v-on="click: sortBy(column)" v-class="active: sortKey == column">
-                {{ column | capitalize }}
-              </a>
-            </th>
-          </tr>
-        </thead>
-
-        <tbody>
-          <tr v-repeat="people
-                      | filterBy search
-                      | orderBy sortKey reverse">
-            <td>{{ name }}</td>
-            <td>{{ age }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <script>
-    new Vue({
-      el: '#vue-table',
-
-      data: {
-        sortKey: '',
-
-        search: '',
-
-        reverse: false,
-
-        columns: ['name', 'age'],
-
-        people: [
-          { name: 'John', age: 50 },
-          { name: 'Jack', age: 35 },
-          { name: 'Keith', age: 28 },
-          { name: 'Alain', age: 17 },
-          { name: 'Neil', age: 1 },
-          { name: 'Mark', age: 72 },
-          { name: 'Don', age: 47 },
-          { name: 'Walter', age: 41 },
-          { name: 'Jessy', age: 33 },
-          { name: 'Henck', age: 22 },
-          { name: 'Sal', age: 9 },
-          { name: 'Skyler', age: 42 },
-          { name: 'Holly', age: 55 },
-        ]
-      },
-
-      methods: {
-        sortBy: function (sortKey) {
-          this.reverse = (this.sortKey == sortKey) ? !this.reverse : false;
-          this.sortKey = sortKey;
-        }
-      },
-    });
-  </script>
+   <div id="app">
+      <h1>csvファイル 検索ツール（簡易オートフィルタ）</h1>
+      <input type="file" @change="fileChange">
+      <p>列幅調整はセル内でBackspace,←,→キー</p>
+      <hr>
+      検索文字:<input type="text" id="filter1" @keyup.enter="filterFn">and<input type="text" id="filter2"
+         @keyup.enter="filterFn">
+      行:<input type="number" id="maxGyou" step="10" min="10" value="30">
+      <input type="button" @click="filterFn" @keyup.enter="filterFn" value="抽出">
+      ページ:
+      <select v-model="index">
+         <option v-for="n in pageLength" v-bind:value="n">{{n}} </option>
+      </select> /{{ (pageLength==100)?"over": pageLength}}
+      <input type="button" value="←" @click="plus(-1)">
+      <input type="button" value="→" @click="plus(1)">
+      一致数：{{ matchNum }}
+      <hr>
+      <div v-for="n in gyouNum" style="white-space: nowrap;">
+         <input type="text" v-for="(v,i) in csvData[(index-1)*gyouNum + (n-1)]" :value="v" @keyup.left="css(i,-25)"
+            @keyup.right="css(i,50)" @keyup.delete="css(i,-1000)"
+            :style="{color : (colorArr[i] || 'black'), width: (widthArr[i] || 150) + 'px' }">
+      </div>
+   </div>
+   <script>
+      var vm = new Vue({
+         el: '#app',
+         data: {
+            index: 1,
+            gyouNum: 30,
+            fileData: [],
+            csvData: [],
+            widthArr: [],
+            colorArr: [],
+            matchNum: 0,
+         },
+         computed: {
+            pageLength: function () {
+               return Math.ceil(this.csvData.length / this.gyouNum);
+            },
+         },
+         methods: {
+            fileChange: function (e) {
+               $("#filter1,#filter2").val("");
+               var file = e.target.files[0];
+               var reader = new FileReader();
+               reader.onload = function (e) {
+                  var codes = new Uint8Array(e.target.result);
+                  var encoding = Encoding.detect(codes);
+                  var unicodeString = Encoding.convert(codes, {
+                     to: 'unicode',
+                     from: encoding,
+                     type: 'string'
+                  });
+                  var arr = unicodeString.trim().replace(/\"/g, "").split("\n");
+                  vm.fileData = arr.map(v => v.split(","));
+                  vm.filterFn();
+               };
+               reader.readAsArrayBuffer(file);
+            },
+            plus: function (x) {
+               if (this.index + x <= 0 || this.index + x > this.pageLength) return;
+               this.index += x;
+            },
+            css: function (x, y) {
+               this.widthArr[x] = this.widthArr[x] || 150;
+               this.widthArr[x] += y;
+               if (this.widthArr[x] < 15) {
+                  this.widthArr[x] = 10;
+                  this.colorArr[x] = "white";
+               } else {
+                  this.colorArr[x] = "black";
+               }
+               this.colorArr.push();
+               this.widthArr.push();
+            },
+            filterFn: function () {
+               this.index = 1;
+               this.gyouNum = $("#maxGyou").val() - 0;
+               var filter1 = $("#filter1").val().toLowerCase();
+               var filter2 = $("#filter2").val().toLowerCase();
+               var arr = this.fileData.filter(function (v) {
+                  return v.join("").toLowerCase().indexOf(filter1) > -1;
+               }).filter(function (v, i) {
+                  return v.join("").toLowerCase().indexOf(filter2) > -1;
+               });
+               this.matchNum = arr.length;
+               this.csvData = arr.filter(function (v, i) {
+                  return i < vm.gyouNum * 100;
+               });
+            },
+         },
+      });
+   </script>
 </body>
-
 
 </html>
